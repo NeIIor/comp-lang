@@ -1,5 +1,3 @@
-Here's the revised README with the EXE file description added to the **Implementation Details** section:
-
 ---
 
 # CMM Compiler  
@@ -40,7 +38,6 @@ The compilation process follows these stages:
    - Algebraic simplification  
 
 3. **Backend** (`lang_compile`)  
-   - Generates x86 assembly  
    - Creates PE executable  
 
 ---
@@ -99,7 +96,7 @@ main
 ### Prerequisites  
 - CMake (≥ 3.8)  
 - MinGW (gcc/g++)  
-- MASM32 (for assembly)  
+- NASM32 (for assembly)  
 
 ### Build Steps  
 ```bash  
@@ -164,13 +161,6 @@ factorial(x)
 ```  
 { function-declaration { $main { nil }{ concatenation { $scan { x { nil }{ nil }}{ nil }}{ concatenation { = { x { nil }{ nil }}{ $factorial { concatenation { nil }{ x { nil }{ nil }}}{ nil }}}{ concatenation { = { i { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { = { j { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { while { < { i { nil }{ nil }}{ 10 { nil }{ nil }}}{ concatenation { = { j { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { while { < { j { nil }{ nil }}{ 10 { nil }{ nil }}}{ concatenation { $print { + { * { 10 { nil }{ nil }}{ i { nil }{ nil }}}{ j { nil }{ nil }}}{ nil }}{ concatenation { = { j { nil }{ nil }}{ + { j { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}}{ concatenation { = { i { nil }{ nil }}{ + { i { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}}}{ concatenation { $print { x { nil }{ nil }}{ nil }}{ nil }}}}}}}}{ function-declaration { $factorial { x { nil }{ nil }}{ concatenation { if { <= { x { nil }{ nil }}{ 1 { nil }{ nil }}}{ concatenation { return { 1 { nil }{ nil }}{ nil }}{ nil }}}{ concatenation { return { * { x { nil }{ nil }}{ $factorial { concatenation { nil }{ - { x { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}{ nil }}{ nil }}}}{ nil }}}  
 ```  
-
-**Output Assembly:**  
-```asm  
-mov ebx, 11  
-push ebx  
-call [print_number]  
-```  
 </details>  
 
 ---
@@ -203,7 +193,7 @@ The compiler generates **32-bit PE executables** with:
    - Hardcoded function addresses (e.g., `print_number`)  
 
 3. **Import Table**:  
-   - Links to external libraries (e.g., `msvcrt.dll` for I/O)  
+   - Links to my library ('sfasmlib.dll)  
 
 Example disassembly snippet:  
 ```asm  
