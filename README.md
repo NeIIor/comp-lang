@@ -10,8 +10,7 @@
 
 This is the English version of the documentation. It describes the structure and usage of the compiler in detail.
 
-(In programm i have lib windows.h, so you can compile only on Windows and i have flag -m32 because i have 32-bit compiler g++, and if you have 64-bit
-you can just delete 8 line in CMakeLists.txt)
+**In programm I have lib windows.h, so you can compile only on Windows and i have flag -m32 because i have 32-bit compiler g++, and if you have 64-bit you can just delete 8 line in CMakeLists.txt**
 
 
 
