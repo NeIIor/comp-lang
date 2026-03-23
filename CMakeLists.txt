@@ -5,7 +5,12 @@ cmake_minimum_required (VERSION 3.8)
 
 # PROJECT PROPERTIES
 project("CMM compiler" LANGUAGES CXX)
-set(CMAKE_CXX_FLAGS "-m32")
+
+# 32-bit host build (-m32) only if your GCC has i686/multilib libs (many Win64 MinGW installs do not).
+option(CMM_32BIT_HOST "Compile the compiler itself with -m32" OFF)
+if(CMM_32BIT_HOST)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -m32")
+endif()
 
 #########################################################################
 

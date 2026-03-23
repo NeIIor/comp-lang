@@ -24,10 +24,13 @@ const size_t DATA_START       = VRT_SIZE * 2 + ENTRY_POINT_ADDR;
 const size_t IMPORT_START     = VRT_SIZE + ENTRY_POINT_ADDR;
 const size_t IMPORT_REL_START = VRT_SIZE;
 
+// PE DataDirectory[IMPORT]: IMAGE_IMPORT_DESCRIPTOR rows (one DLL + null terminator).
+const size_t IMPORT_DESCRIPTOR_COUNT = 2;
+
 
 const unsigned char DOS_STUB[] =
 {
-    0x0E, 0x1F, 0xBA, 0x0E, 0x00, 0xB4,
+    0x0E, 0x1F, 0xBA, 0x0E, 0x00, 0xB4, //TODO - comments about header
     0x09, 0xCD, 0x21, 0xB8, 0x01, 0x4C,
     0xCD, 0x21, 0x54, 0x68, 0x69, 0x73,
     0x20, 0x70, 0x72, 0x6F, 0x67, 0x72,

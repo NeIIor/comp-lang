@@ -9,6 +9,12 @@ struct import_name
     const CHAR* Name;
     size_t size;
 
+    import_name() :
+        Hint(0),
+        Name(nullptr),
+        size(0)
+    {}
+
     import_name(const char name[], size_t size, WORD hnt = 0) :
         Hint(hnt),
         Name(name),
@@ -31,32 +37,28 @@ struct import_name
         fwrite(Name, sizeof(char), size, file);
 
         char zero = 0;
-        fwrite(&zero, sizeof(zero), 1, file); // feature of the end
+        fwrite(&zero, sizeof(zero), 1, file);
 
         return size;
     }
 };
 
-class import_tabel
+class import_table
 {
 private:
-    size_t size;
+    static const size_t N_IMPORTS = 3;
+
     IMAGE_IMPORT_DESCRIPTOR* table;
-    import_name* name_imp;
-    size_t names_size;
-    IMAGE_THUNK_DATA64* thunk;
-    size_t align_size;
+    import_name              name_imp[N_IMPORTS];
+    IMAGE_THUNK_DATA32       thunk[N_IMPORTS + 1];
+    size_t                   names_size;
 
 public:
-    import_tabel(size_t sz = 3) :
-        size(sz + 1),
-        name_imp(nullptr),
-        names_size(0),
-        align_size(0)
+    import_table(void) :
+        table(nullptr),
+        names_size(0)
     {
-        table    = (IMAGE_IMPORT_DESCRIPTOR*) calloc(sz + 1, sizeof(IMAGE_IMPORT_DESCRIPTOR));
-        name_imp = (import_name*) calloc(sz, sizeof(import_name));
-        thunk    = (IMAGE_THUNK_DATA64*) calloc(sz, sizeof(thunk[0]));
+        table = (IMAGE_IMPORT_DESCRIPTOR*) calloc(IMPORT_DESCRIPTOR_COUNT, sizeof(IMAGE_IMPORT_DESCRIPTOR));
     }
 
     void fill_def_names(void)
@@ -65,7 +67,8 @@ public:
         name_imp[1].fill("GetNumber", 9);
         name_imp[2].fill("PrintNumber", 11);
 
-        for (size_t i = 0; i < size - 1; ++i)
+        names_size = 0;
+        for (size_t i = 0; i < N_IMPORTS; ++i)
             names_size += name_imp[i].size + 3;
     }
 
@@ -73,42 +76,48 @@ public:
     {
         fill_def_names();
 
-        size_t tbl_size        = sizeof(table[1]) * size;
-        size_t thunks_size     = sizeof(thunk[1]) * (size - 1);
-        size_t names_start     = IMPORT_START + tbl_size + thunks_size;
-        size_t fst_thunk_start = names_start + names_size;
-        size_t name_rva        = fst_thunk_start + thunks_size;
-        size_t cur_name_size   = 0;
+        const size_t desc_size = sizeof(IMAGE_IMPORT_DESCRIPTOR) * IMPORT_DESCRIPTOR_COUNT;
+        const size_t int_size  = sizeof(IMAGE_THUNK_DATA32) * (N_IMPORTS + 1);
 
-        for (size_t i = 0; i < size - 1; ++i)
+        const size_t names_start_rva = IMPORT_START + desc_size + int_size;
+        const size_t iat_start_rva   = names_start_rva + names_size;
+        const size_t dll_name_rva    = iat_start_rva + int_size;
+
+        table[0].OriginalFirstThunk = static_cast<DWORD>(IMPORT_START + desc_size);
+        table[0].FirstThunk         = static_cast<DWORD>(iat_start_rva);
+        table[0].Name               = static_cast<DWORD>(dll_name_rva);
+
+        size_t cur_name_size = 0;
+        for (size_t i = 0; i < N_IMPORTS; ++i)
         {
-            table[i].OriginalFirstThunk = IMPORT_START + tbl_size + i * sizeof(thunk[1]);
-            table[i].FirstThunk = fst_thunk_start + i * sizeof(thunk[1]);
-            table[i].Name = name_rva;
-            thunk[i].u1.AddressOfData = names_start + cur_name_size;
+            thunk[i].u1.AddressOfData = static_cast<DWORD>(names_start_rva + cur_name_size);
             cur_name_size += name_imp[i].size + 3;
         }
+        thunk[N_IMPORTS].u1.AddressOfData = 0;
 
         return true;
     }
 
-    bool put_in_file(FILE* file) // default
+    bool put_in_file(FILE* file)
     {
         if (file == nullptr)
             return false;
 
         const size_t dll_name_size = 13;
-        const size_t stub_size = 1 + SIZE_RAW - (sizeof(table[0]) * size + 2 * sizeof(thunk[1]) * (size - 1) + names_size + dll_name_size);
+        const size_t int_size    = sizeof(IMAGE_THUNK_DATA32) * (N_IMPORTS + 1);
+        const size_t desc_size   = sizeof(IMAGE_IMPORT_DESCRIPTOR) * IMPORT_DESCRIPTOR_COUNT;
+        const size_t total_data  = desc_size + int_size + names_size + int_size + dll_name_size;
+        const size_t stub_size   = 1 + SIZE_RAW - total_data;
         char* stub = new char[stub_size] {0};
 
-        fwrite(table, sizeof(table[0]), size, file);
+        fwrite(table, sizeof(table[0]), IMPORT_DESCRIPTOR_COUNT, file);
 
-        fwrite(thunk, sizeof(thunk[0]), size - 1, file);
+        fwrite(thunk, sizeof(thunk[0]), N_IMPORTS + 1, file);
 
-        for (size_t i = 0; i < size - 1; ++i)
+        for (size_t i = 0; i < N_IMPORTS; ++i)
             name_imp[i].put_in_file(file);
 
-        fwrite(thunk, sizeof(thunk[0]), size - 1, file);
+        fwrite(thunk, sizeof(thunk[0]), N_IMPORTS + 1, file);
 
         fprintf(file, "sfasmlib.dll\0");
 
@@ -121,27 +130,19 @@ public:
 
     unsigned get_proc_addr(size_t num)
     {
-        return sizeof(table[0]) * size + sizeof(thunk[0]) * (size - 1) + names_size + num * sizeof(thunk[0]);
+        const size_t desc_size = sizeof(IMAGE_IMPORT_DESCRIPTOR) * IMPORT_DESCRIPTOR_COUNT;
+        const size_t int_size  = sizeof(IMAGE_THUNK_DATA32) * (N_IMPORTS + 1);
+
+        return static_cast<unsigned>(desc_size + int_size + names_size + num * sizeof(IMAGE_THUNK_DATA32));
     }
 
-    ~import_tabel(void)
+    ~import_table(void)
     {
         if (table != nullptr)
         {
             free(table);
             table = nullptr;
         }
-        if (name_imp != nullptr)
-        {
-            free(name_imp);
-            name_imp = nullptr;
-        }
-        if (thunk != nullptr)
-        {
-            free(thunk);
-            thunk = nullptr;
-        }
-        size = 0;
     }
 };
 
