@@ -1,6 +1,5 @@
-build
-.history
-Doxyfile   
-example            
-html              
-latex
+build/
+.history/
+html/
+latex/
+Doxyfile

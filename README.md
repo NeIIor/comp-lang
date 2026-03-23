@@ -16,7 +16,8 @@
 5. [Инструкции по сборке](#инструкции-по-сборке)  
 6. [Пример использования](#пример-использования)  
 7. [Инструменты разработки](#инструменты-разработки)  
-8. [Подробности реализации](#подробности-реализации)  
+8. [Документация кода (Doxygen)](#документация-кода-doxygen)  
+9. [Подробности реализации](#подробности-реализации)  
 
 ---
 
@@ -226,6 +227,16 @@ factorial(x)
 - **Бинарный анализ**: `objdump -d output.exe` (MinGW), IDA Free  
 - **Сборка**: CMake, MinGW  
 
+### Документация кода (Doxygen)  
+При желании можно собрать справку по коду с [Doxygen](https://www.doxygen.nl/): создайте локальный **`Doxyfile`** (например `doxygen -g Doxyfile`) и настройте под проект; конфиг в репозиторий **не включается**.  
+
+Команда из корня проекта (нужен установленный `doxygen` и файл `Doxyfile`):  
+```bash
+doxygen Doxyfile
+```  
+
+Результат: каталог **`html/`** (откройте **`html/index.html`** в браузере) и **`latex/`** (исходники LaTeX для сборки PDF при необходимости). Это **сгенерированные** файлы; они перечислены в **`.gitignore`**.
+
 ---
 
 ## Подробности реализации  
@@ -286,7 +297,8 @@ The CMM toolchain targets **32-bit Windows PE** executables. Build the compiler 
 5. [Build Instructions](#build-instructions)  
 6. [Usage Examples](#usage-examples)  
 7. [Development Tools](#development-tools)  
-8. [Implementation Details](#implementation-details)  
+8. [API Documentation (Doxygen)](#api-documentation-doxygen)  
+9. [Implementation Details](#implementation-details)  
 
 ---
 
@@ -496,6 +508,16 @@ Recommended tools for development:
 - **Debugging**: GDB, Visual Studio (for `output.exe` and the tools)  
 - **Binary analysis**: `objdump -d output.exe` (MinGW), IDA Free  
 - **Build**: CMake, MinGW  
+
+### API Documentation (Doxygen)  
+Optional [Doxygen](https://www.doxygen.nl/) API docs: create a local **`Doxyfile`** (e.g. `doxygen -g Doxyfile`) and tune it; the config is **not** tracked in this repository.  
+
+From the project root (with `doxygen` installed and a `Doxyfile` present):  
+```bash
+doxygen Doxyfile
+```  
+
+Output: **`html/`** (open **`html/index.html`** in a browser) and **`latex/`** (LaTeX sources for an optional PDF build). These directories are **generated** and are normally **not** committed — they are listed in **`.gitignore`**.
 
 ---
 
