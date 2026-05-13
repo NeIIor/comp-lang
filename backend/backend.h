@@ -30,6 +30,11 @@ struct variables
     int curr_size = 0;
 
     char var[MAX_VAR_NUM][MAX_VAR_NAME_LENGTH] = {{0}};
+
+    int word_off[MAX_VAR_NUM]    = {};
+    int elem_words[MAX_VAR_NUM]  = {};
+    int is_global[MAX_VAR_NUM]   = {};
+    int n_global_decl            = 0;
 };
 
 struct elements
@@ -41,15 +46,17 @@ struct elements
 
 void backend (FILE *tree_lang, FILE *exe_file);
 
+size_t prepare_exe_globals (bin_tree *tree, variables *var);
+
 bin_tree_elem *fill_tree (text_t *text, variables *var);
 
 int var_search (variables *var, char *temp_var_name);
 
 void fill_text_sec (bin_tree *tree, BYTE *text_section, variables *var);
 
-void find_glob_vars (bin_tree_elem *element, int n_glob_vars);
+void find_glob_vars (bin_tree_elem *element, variables *var);
 
-void main_var_optimize (bin_tree_elem *element, int n_glob_vars);
+void main_var_optimize (bin_tree_elem *element, int n_global_decl);
 
 void encode_body (bin_tree_elem *vertex, BYTE *text_section, variables *var);
 

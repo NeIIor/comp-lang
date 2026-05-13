@@ -1,5 +1,7 @@
 #include "tree.h"
 
+#include <stdlib.h>
+
 void construct_tree (bin_tree *tree, const char *name)
 {
     assert(tree);

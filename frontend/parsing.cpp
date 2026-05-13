@@ -174,6 +174,16 @@ void fill_tree (bin_tree *tree, FILE *program, variables *var, elements *elem)
             elem->elements_[elem->curr_size_++] = create_tree_element(BRACKET, CLOSE, nullptr, nullptr);
             text.counter++;
         }
+        else if (*(text.counter) == '[')
+        {
+            elem->elements_[elem->curr_size_++] = create_tree_element(SQ_BRACKET, SQ_OPEN, nullptr, nullptr);
+            text.counter++;
+        }
+        else if (*(text.counter) == ']')
+        {
+            elem->elements_[elem->curr_size_++] = create_tree_element(SQ_BRACKET, SQ_CLOSE, nullptr, nullptr);
+            text.counter++;
+        }
         else if (*(text.counter) == '{')
         {
             elem->elements_[elem->curr_size_++] = create_tree_element(FIG_BRACKET, OPEN, nullptr, nullptr);
@@ -229,6 +239,23 @@ void fill_tree (bin_tree *tree, FILE *program, variables *var, elements *elem)
             elem->elements_[elem->curr_size_++] = create_tree_element(ENUM, 0, nullptr, nullptr);
             text.counter++;
         }
+        else
+        {
+            unsigned char uc = (unsigned char)*(text.counter);
+
+            if (uc == 0xEF && text.counter[1] != '\0' && text.counter[2] != '\0' &&
+                (unsigned char)text.counter[1] == 0xBB && (unsigned char)text.counter[2] == 0xBF)
+                text.counter += 3;
+            else if (isspace(uc))
+                text.counter++;
+            else if (uc >= 0x80)
+                text.counter++;
+            else
+            {
+                fprintf(stderr, "cmm_frontend: warning: skipping unexpected byte 0x%02X\n", uc);
+                text.counter++;
+            }
+        }
 
         SKIP_SPACES
     }
@@ -246,7 +273,7 @@ void fill_tree (bin_tree *tree, FILE *program, variables *var, elements *elem)
 
     for (size_t i = 0; i < elem->curr_size_; i++)
     {
-        if (elem->elements_[i]->type == BRACKET || elem->elements_[i]->type == FIG_BRACKET)
+        if (elem->elements_[i]->type == BRACKET || elem->elements_[i]->type == FIG_BRACKET || elem->elements_[i]->type == SQ_BRACKET)
             free(elem->elements_[i]);
     }
 
@@ -294,12 +321,26 @@ int is_keyword (char *temp_var_name, int *type)
     else if (strncmp(temp_var_name, "power", 5) == 0)
         return POWER;
 
+    if (strncmp(temp_var_name, "sock_tcp_connect", 16) == 0 && temp_var_name[16] == '\0')
+        return SOCK_TCP_CONNECT;
+    if (strncmp(temp_var_name, "sock_recv_int", 13) == 0 && temp_var_name[13] == '\0')
+        return SOCK_RECV_INT;
+    if (strncmp(temp_var_name, "sock_send_int", 13) == 0 && temp_var_name[13] == '\0')
+        return SOCK_SEND_INT;
+    if (strncmp(temp_var_name, "sock_close", 10) == 0 && temp_var_name[10] == '\0')
+        return SOCK_CLOSE;
+    if (strncmp(temp_var_name, "sock_init", 9) == 0 && temp_var_name[9] == '\0')
+        return SOCK_INIT;
+
     *type = MAIN;
 
     if (strncmp(temp_var_name, "main", 4) == 0)
         return MAIN;
 
     *type = COMMAND;
+
+    if (strncmp(temp_var_name, "dim", 3) == 0 && temp_var_name[3] == '\0')
+        return DIM;
 
     if (strncmp(temp_var_name, "if", 2) == 0)
         return IF;
@@ -346,6 +387,13 @@ bin_tree_elem *create_prog_tree (elements *elem, int *counter)
 
     if (vertex->type == MAIN)
         vertex = create_main_tree(elem, counter);
+    else if (vertex->type == COMMAND && (int) vertex->value == DIM)
+    {
+        vertex->left  = elem->elements_[*counter];
+        (*counter)++;
+        vertex->right = create_e_tree(elem, counter);
+        (*counter)++;
+    }
     else if (vertex->type == VAR && elem->elements_[*counter]->type == BRACKET && (int) elem->elements_[*counter]->value == OPEN)
         vertex = create_user_func_tree(elem, counter);
     else if (vertex->type == VAR && elem->elements_[*counter]->type == COMMAND && (int) elem->elements_[*counter]->value == ASSIGN)
@@ -461,7 +509,11 @@ bin_tree_elem *create_body_tree (elements *elem, int *counter)
     bin_tree_elem *vertex = create_cmd_tree(elem, counter);
     bin_tree_elem *bunch  = nullptr;
 
-    if ((vertex->type == FUNC && ((int) vertex->value == SCAN || (int) vertex->value == PRINT)) || vertex->type == RETURN || vertex->type == USER_FUNC || (vertex->type == COMMAND && ((int) vertex->value != IF && (int) vertex->value != WHILE)))
+    if ((vertex->type == FUNC &&
+         ((int) vertex->value == SCAN || (int) vertex->value == PRINT ||
+          ((int) vertex->value >= SOCK_INIT && (int) vertex->value <= SOCK_RECV_INT))) ||
+        vertex->type == RETURN || vertex->type == USER_FUNC ||
+        (vertex->type == COMMAND && ((int) vertex->value != IF && (int) vertex->value != WHILE)))
     {
         bunch = elem->elements_[*counter];
         (*counter)++;
@@ -522,6 +574,18 @@ bin_tree_elem *create_cmd_tree (elements *elem, int *counter)
 
         if (elem->elements_[*counter]->type != BUNCH)
             command->left = create_e_tree(elem, counter);
+    }
+    else if (elem->elements_[*counter]->type == FUNC &&
+             (int) elem->elements_[*counter]->value >= SOCK_INIT &&
+             (int) elem->elements_[*counter]->value <= SOCK_RECV_INT)
+    {
+        command = elem->elements_[*counter];
+        (*counter)++;
+        (*counter)++;
+
+        command->left = create_param_func_tree(elem, counter);
+
+        (*counter)++;
     }
     else if (elem->elements_[*counter]->type == FUNC && (int) elem->elements_[*counter]->value == SCAN)
     {
@@ -684,6 +748,18 @@ bin_tree_elem *create_n_tree (elements *elem, int *counter)
         vertex = elem->elements_[*counter];
         (*counter)++;
     }
+    else if (elem->elements_[*counter]->type == VAR && elem->elements_[*counter + 1]->type == SQ_BRACKET && (int) elem->elements_[*counter + 1]->value == SQ_OPEN)
+    {
+        vertex = elem->elements_[*counter];
+        vertex->type = ARRAY_IDX;
+        (*counter)++;
+        (*counter)++;
+
+        vertex->left = create_e_tree(elem, counter);
+
+        if (*counter < elem->curr_size_ && elem->elements_[*counter]->type == SQ_BRACKET && (int) elem->elements_[*counter]->value == SQ_CLOSE)
+            (*counter)++;
+    }
     else if (elem->elements_[*counter]->type == VAR && elem->elements_[*counter + 1]->type == BRACKET && (int) elem->elements_[*counter + 1]->value == OPEN)
     {
         vertex = elem->elements_[*counter];
@@ -701,7 +777,28 @@ bin_tree_elem *create_n_tree (elements *elem, int *counter)
         vertex = elem->elements_[*counter];
         (*counter)++;
     }
-    else if (elem->elements_[*counter]->type == FUNC && (int) elem->elements_[*counter]->value != DERIV && (int) elem->elements_[*counter]->value != POWER)
+    else if (elem->elements_[*counter]->type == FUNC &&
+             (int) elem->elements_[*counter]->value >= SOCK_INIT &&
+             (int) elem->elements_[*counter]->value <= SOCK_RECV_INT)
+    {
+        bin_tree_elem *func_elem = elem->elements_[*counter];
+        (*counter)++;
+
+        if (*counter < elem->curr_size_ && elem->elements_[*counter]->type == BRACKET && (int) elem->elements_[*counter]->value == OPEN)
+        {
+            (*counter)++;
+
+            func_elem->left = create_param_func_tree(elem, counter);
+
+            if (*counter < elem->curr_size_ && elem->elements_[*counter]->type == BRACKET && (int) elem->elements_[*counter]->value == CLOSE)
+                (*counter)++;
+        }
+
+        vertex = func_elem;
+    }
+    else if (elem->elements_[*counter]->type == FUNC &&
+             (int) elem->elements_[*counter]->value != DERIV && (int) elem->elements_[*counter]->value != POWER &&
+             !((int) elem->elements_[*counter]->value >= SOCK_INIT && (int) elem->elements_[*counter]->value <= SOCK_RECV_INT))
     {
         bin_tree_elem *func_elem = elem->elements_[*counter];
         (*counter)++;

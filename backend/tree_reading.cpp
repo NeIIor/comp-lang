@@ -72,6 +72,75 @@ bin_tree_elem *fill_tree (text_t *text, variables *var)
         CREATE_TREE_ELEM(FUNC, LN, 3)
     else if (strncmp(text->counter, "$power", 6)  == 0 && !isalpha(*(text->counter + 6)))
         CREATE_TREE_ELEM(FUNC, POWER, 6)
+    else if (strncmp(text->counter, "$sock_tcp_connect", 17) == 0 && !isalpha((unsigned char) *(text->counter + 17)))
+        CREATE_TREE_ELEM(FUNC, SOCK_TCP_CONNECT, 17)
+    else if (strncmp(text->counter, "$sock_recv_int", 14) == 0 && !isalpha((unsigned char) *(text->counter + 14)))
+        CREATE_TREE_ELEM(FUNC, SOCK_RECV_INT, 14)
+    else if (strncmp(text->counter, "$sock_send_int", 14) == 0 && !isalpha((unsigned char) *(text->counter + 14)))
+        CREATE_TREE_ELEM(FUNC, SOCK_SEND_INT, 14)
+    else if (strncmp(text->counter, "$sock_close", 11) == 0 && !isalpha((unsigned char) *(text->counter + 11)))
+        CREATE_TREE_ELEM(FUNC, SOCK_CLOSE, 11)
+    else if (strncmp(text->counter, "$sock_init", 10) == 0 && !isalpha((unsigned char) *(text->counter + 10)))
+        CREATE_TREE_ELEM(FUNC, SOCK_INIT, 10)
+    else if (strncmp(text->counter, "$subs", 5) == 0 && !isalpha((unsigned char) *(text->counter + 5)))
+    {
+        text->counter += 5;
+
+        while (isspace(*(text->counter)) && *(text->counter) != '\0')
+        {
+            if (*(text->counter) == '\n' && text->line_counter < text->n_lines - 1)
+                text->counter = text->lines[++(text->line_counter)].line;
+            else
+                text->counter++;
+        }
+
+        if (*(text->counter) != '{')
+            return nullptr;
+
+        text->counter++;
+
+        bin_tree_elem *name_el = fill_tree(text, var);
+
+        while (isspace(*(text->counter)) && *(text->counter) != '\0')
+        {
+            if (*(text->counter) == '\n' && text->line_counter < text->n_lines - 1)
+                text->counter = text->lines[++(text->line_counter)].line;
+            else
+                text->counter++;
+        }
+
+        text->counter++;
+
+        while (isspace(*(text->counter)) && *(text->counter) != '\0')
+        {
+            if (*(text->counter) == '\n' && text->line_counter < text->n_lines - 1)
+                text->counter = text->lines[++(text->line_counter)].line;
+            else
+                text->counter++;
+        }
+
+        text->counter++;
+
+        element = create_tree_element(ARRAY_IDX, name_el->value, nullptr, nullptr);
+        delete_tree_elem(name_el);
+
+        element->left = fill_tree(text, var);
+
+        while (isspace(*(text->counter)) && *(text->counter) != '\0')
+        {
+            if (*(text->counter) == '\n' && text->line_counter < text->n_lines - 1)
+                text->counter = text->lines[++(text->line_counter)].line;
+            else
+                text->counter++;
+        }
+
+        if (*(text->counter) != '}')
+            return nullptr;
+
+        text->counter++;
+
+        return element;
+    }
     else if (strncmp(text->counter, "if", 2)      == 0 && !isalpha(*(text->counter + 2)))
         CREATE_TREE_ELEM(COMMAND, IF, 2)
     else if (strncmp(text->counter, "while", 5)   == 0 && !isalpha(*(text->counter + 5)))
@@ -90,6 +159,8 @@ bin_tree_elem *fill_tree (text_t *text, variables *var)
         CREATE_TREE_ELEM(CONDITION, JE, 2)
     else if (strncmp(text->counter, "=", 1)  == 0)
         CREATE_TREE_ELEM(COMMAND, ASSIGN, 1)
+    else if (strncmp(text->counter, "dim", 3) == 0 && !isalnum((unsigned char) *(text->counter + 3)))
+        CREATE_TREE_ELEM(COMMAND, DIM, 3)
     else if (strncmp(text->counter, "function-declaration", strlen("function-declaration")) == 0)
         CREATE_TREE_ELEM(BUNCH, 0, strlen("function-declaration"))
     else if (strncmp(text->counter, "$main", 5) == 0 && !isalpha(*(text->counter + 5)))

@@ -18,6 +18,8 @@ bin_tree_elem *derivate_tree (bin_tree_elem *element, int var_value)
             else
                 return CR_NUM(0);
         }
+        case ARRAY_IDX:
+            return CR_NUM(0);
         case OPER:
         {
             switch ((int) element->value)
@@ -83,6 +85,12 @@ bin_tree_elem *derivate_tree (bin_tree_elem *element, int var_value)
                     return MULTIPLY(DIVIDE(CR_NUM(1), cL), dL);
                 case EXP:
                     return MULTIPLY(copy_tree(element), dL);
+                case SOCK_INIT:
+                case SOCK_TCP_CONNECT:
+                case SOCK_CLOSE:
+                case SOCK_SEND_INT:
+                case SOCK_RECV_INT:
+                    return CR_NUM(0);
                 default:
                     break;
             }

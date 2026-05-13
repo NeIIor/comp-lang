@@ -1,7 +1,7 @@
 #########################################################################
 
 # CMAKE MINIMAL VERSION
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 
 # PROJECT PROPERTIES
 project("CMM compiler" LANGUAGES CXX)
@@ -32,9 +32,59 @@ add_compile_options(
 #########################################################################
 
 
-# Simple and fast assembler library (sfasmlib)
+# Windows: build sfasmlib_runtime.c -> ${CMAKE_BINARY_DIR}/sfasmlib.dll on each build (when stale).
+# CMM_SFASM_GCC: persistent path to mingw32 gcc.exe (i686), stored in CMakeCache.txt — no shell env needed.
+# Autodetects C:/msys64/... etc. when the cache entry is empty on first configure.
+# Disable DLL build: cmake .. -DCMM_BUILD_SFASM_RUNTIME=OFF
+if(WIN32)
+    option(CMM_BUILD_SFASM_RUNTIME "Build sfasmlib.dll from sfasmlib_runtime.c into the binary dir" ON)
 
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/sfasmlib.dll DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+    set(CMM_SFASM_GCC "" CACHE FILEPATH
+        "Path to MSYS2 mingw32 gcc.exe (i686), e.g. C:/msys64/mingw32/bin/gcc.exe. Leave empty to auto-detect.")
+
+    if("${CMM_SFASM_GCC}" STREQUAL "")
+        foreach(_mgcc IN ITEMS
+                "C:/msys64/mingw32/bin/gcc.exe"
+                "D:/msys64/mingw32/bin/gcc.exe"
+                "$ENV{ProgramFiles}/msys64/mingw32/bin/gcc.exe"
+                "$ENV{LOCALAPPDATA}/Programs/msys64/mingw32/bin/gcc.exe")
+            if(EXISTS "${_mgcc}")
+                set(CMM_SFASM_GCC "${_mgcc}" CACHE FILEPATH "Path to MSYS2 mingw32 gcc.exe (i686)." FORCE)
+                message(STATUS "Auto-selected CMM_SFASM_GCC: ${CMM_SFASM_GCC}")
+                break()
+            endif()
+        endforeach()
+    endif()
+
+    if(CMM_BUILD_SFASM_RUNTIME)
+        if(CMM_SFASM_GCC AND EXISTS "${CMM_SFASM_GCC}")
+            add_custom_command(
+                OUTPUT "${CMAKE_BINARY_DIR}/sfasmlib.dll"
+                COMMAND "${CMAKE_COMMAND}" -E env "SFASM_GCC32=${CMM_SFASM_GCC}"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/build_runtime.bat"
+                        "${CMAKE_BINARY_DIR}"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib"
+                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/sfasmlib_runtime.c"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/build_runtime.bat"
+                COMMENT "Building sfasmlib.dll (${CMM_SFASM_GCC})"
+                VERBATIM)
+        else()
+            if(NOT "${CMM_SFASM_GCC}" STREQUAL "")
+                message(WARNING "CMM_SFASM_GCC points to missing file: \"${CMM_SFASM_GCC}\" — sfasmlib build may fail.")
+            endif()
+            add_custom_command(
+                OUTPUT "${CMAKE_BINARY_DIR}/sfasmlib.dll"
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/build_runtime.bat"
+                        "${CMAKE_BINARY_DIR}"
+                WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib"
+                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/sfasmlib_runtime.c"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/sfasmlib/build_runtime.bat"
+                COMMENT "Building sfasmlib.dll (sfasmlib_runtime.c)"
+                VERBATIM)
+        endif()
+        add_custom_target(cmm_sfasm_runtime ALL DEPENDS "${CMAKE_BINARY_DIR}/sfasmlib.dll")
+    endif()
+endif()
 
 # TEXT LIBRARY
 
@@ -125,5 +175,11 @@ add_executable(${LANG_COMPILE_NAME} ${LANG_COMPILE_SRC})
 
 target_include_directories(${LANG_COMPILE_NAME} PRIVATE ${TEXT_LIB_SRC_DIR} PRIVATE ${TREE_LIB_SRC_DIR})
 target_link_libraries(${LANG_COMPILE_NAME} ${TEXT_LIB_PATH} ${TREE_LIB_PATH})
+
+if(WIN32 AND CMM_BUILD_SFASM_RUNTIME)
+    foreach(_cmm_exe IN ITEMS ${LANG_FRONTEND_NAME} ${LANG_OPTIMIZER_NAME} ${CMM_REV_FRONTEND_NAME} ${LANG_COMPILE_NAME})
+        add_dependencies(${_cmm_exe} cmm_sfasm_runtime)
+    endforeach()
+endif()
 
 ##########################################################################

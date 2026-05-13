@@ -245,15 +245,14 @@ ExitProgram     proc
 
                 invoke ExitProcess, 0
                 
-ExitProgram     endp               
+ExitProgram     endp              
 ;==========================================================================
-
 
 
 ;==========================================================================
 ; Main function, this is the DLL entry point that Windows will call
 ;==========================================================================
-LibMain         proc hInstDLL:dword, reason:dword, unused:dword 
+LibMain         proc hInstDLL:dword, reason:dword, unused:dword
 
                 .if reason == DLL_PROCESS_ATTACH
                 mov eax, TRUE                  ; return TRUE so DLL will start

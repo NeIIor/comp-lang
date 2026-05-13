@@ -21,8 +21,11 @@ const size_t VRT_SIZE = 0x5000;
 const size_t SIZE_RAW = 0x1000;
 
 const size_t DATA_START       = VRT_SIZE * 2 + ENTRY_POINT_ADDR;
+const size_t BSS_START      = DATA_START + VRT_SIZE;
 const size_t IMPORT_START     = VRT_SIZE + ENTRY_POINT_ADDR;
 const size_t IMPORT_REL_START = VRT_SIZE;
+
+const size_t BSS_CHARACTER = IMAGE_SCN_CNT_UNINITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
 
 // PE DataDirectory[IMPORT]: IMAGE_IMPORT_DESCRIPTOR rows (one DLL + null terminator).
 const size_t IMPORT_DESCRIPTOR_COUNT = 2;

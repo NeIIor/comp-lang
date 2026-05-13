@@ -5,6 +5,11 @@ DWORD CODE_CURRENT_ADDR = 0;
 extern DWORD EXIT_ADDR;
 extern DWORD GET_NUMBER_ADDR;
 extern DWORD PRINT_NUMBER_ADDR;
+extern DWORD SOCK_INIT_ADDR;
+extern DWORD SOCK_TCP_CONNECT_ADDR;
+extern DWORD SOCK_CLOSE_ADDR;
+extern DWORD SOCK_SEND_INT_ADDR;
+extern DWORD SOCK_RECV_INT_ADDR;
 
 DWORD  FUNC_ADDRS[MAX_N_FUNCS]       = { 0 };
 WORD   FUNC_NUMBER[MAX_N_FUNCS]      = { 0 };
@@ -14,6 +19,93 @@ DWORD* CALL_ADDRS[MAX_N_FUNC_CALLS]       = { 0 };
 WORD   FUNC_CALL_NUMBER[MAX_N_FUNC_CALLS] = { 0 };
 WORD   FUNC_PTR_CALLS[MAX_N_FUNC_CALLS]   = { 0 };
 BYTE   CALL_COUNTER                       = 0;
+
+static bool is_sock_builtin (int func_value)
+{
+    return func_value >= SOCK_INIT && func_value <= SOCK_RECV_INT;
+}
+
+static void encode_sock_push_args_rev (bin_tree_elem *param_chain, BYTE *text_section, variables *var);
+
+static void encode_sock_dispatch (bin_tree_elem *element, BYTE *text_section, variables *var, int want_result_ebx);
+
+static int eval_const_fold (bin_tree_elem *e)
+{
+    if (e == nullptr)
+        return 0;
+    if (e->type == NUM)
+        return (int) e->value;
+    if (e->type == OPER)
+    {
+        int L = eval_const_fold(e->left);
+        int R = eval_const_fold(e->right);
+
+        switch ((int) e->value)
+        {
+            case ADD:
+                return L + R;
+            case SUB:
+                return L - R;
+            case MUL:
+                return L * R;
+            case DIV:
+                return R != 0 ? L / R : 0;
+            default:
+                return 0;
+        }
+    }
+
+    return 0;
+}
+
+size_t prepare_exe_globals (bin_tree *tree, variables *var)
+{
+    for (int i = 0; i < MAX_VAR_NUM; i++)
+    {
+        var->word_off[i]   = 0;
+        var->elem_words[i] = 0;
+        var->is_global[i]  = 0;
+    }
+
+    var->n_global_decl = 0;
+
+    bin_tree_elem *v = tree->root;
+    int glob_cursor    = 0;
+
+    while (v != nullptr && v->left != nullptr && v->left->type == COMMAND &&
+           (((int) v->left->value == ASSIGN) || ((int) v->left->value == DIM)))
+    {
+        bin_tree_elem *cmd = v->left;
+
+        if ((int) cmd->value == ASSIGN)
+        {
+            int id = (int) cmd->left->value;
+
+            var->word_off[id]   = glob_cursor;
+            var->elem_words[id] = 1;
+            var->is_global[id]  = 1;
+            glob_cursor += 1;
+        }
+        else
+        {
+            int id = (int) cmd->left->value;
+            int sz = eval_const_fold(cmd->right);
+
+            if (sz < 1)
+                sz = 1;
+
+            var->word_off[id]   = glob_cursor;
+            var->elem_words[id] = sz;
+            var->is_global[id]  = 1;
+            glob_cursor += sz;
+        }
+
+        var->n_global_decl++;
+        v = v->right;
+    }
+
+    return (size_t) glob_cursor;
+}
 
 void backend (FILE *tree_lang, FILE *exe_file)
 {
@@ -42,7 +134,15 @@ void backend (FILE *tree_lang, FILE *exe_file)
 
     tree.root = fill_tree(&text, &var);
 
-    create_exe(&tree, exe_file, &var);
+    size_t glob_words = prepare_exe_globals(&tree, &var);
+
+    size_t bss_bytes = glob_words * sizeof(DWORD);
+    size_t bss_vsize = ((bss_bytes + ENTRY_POINT_ADDR - 1U) / ENTRY_POINT_ADDR) * ENTRY_POINT_ADDR;
+
+    if (bss_vsize == 0)
+        bss_vsize = ENTRY_POINT_ADDR;
+
+    create_exe(&tree, exe_file, &var, bss_vsize);
 
     destruct_text(&text);
     destruct_tree(&tree);
@@ -51,30 +151,30 @@ void backend (FILE *tree_lang, FILE *exe_file)
 void fill_text_sec (bin_tree *tree, BYTE *text_section, variables *var)
 {
     PUT_BYTE(MOV_EDI)
-    PUT_DWORD(IMAGE_BASE + 2 * VRT_SIZE + ENTRY_POINT_ADDR)
-    
+    PUT_DWORD(IMAGE_BASE + DATA_START)
+
     PUT_BYTE(MOV_ESI)
-    PUT_DWORD(IMAGE_BASE + 2 * VRT_SIZE + ENTRY_POINT_ADDR + 2 * VRT_SIZE / 3)
+    PUT_DWORD(IMAGE_BASE + BSS_START)
 
-    bin_tree_elem* vertex = tree->root;
+    bin_tree_elem *vertex = tree->root;
 
-    int n_glob_vars = 0;
-
-    while (vertex->left->type == COMMAND && (int) vertex->left->value == ASSIGN)
+    while (vertex != nullptr && vertex->left != nullptr && vertex->left->type == COMMAND &&
+           (((int) vertex->left->value == ASSIGN) || ((int) vertex->left->value == DIM)))
     {
-        encode_expr(vertex->left->right, text_section, var);
+        if ((int) vertex->left->value == ASSIGN)
+        {
+            encode_expr(vertex->left->right, text_section, var);
 
-        PUT_WORD(MOV_ESI_MEM_EBX)
-        PUT_BYTE((int) vertex->left->value * sizeof(int))
+            PUT_WORD(MOV_ESI_MEM_EBX)
+            PUT_BYTE(var->word_off[(int) vertex->left->left->value] * (int) sizeof(int))
+        }
 
         vertex = vertex->right;
-
-        n_glob_vars++;
     }
 
-    find_glob_vars(vertex, n_glob_vars);
+    find_glob_vars(vertex, var);
 
-    main_var_optimize(vertex, n_glob_vars);
+    main_var_optimize(vertex, var->n_global_decl);
 
     encode_body(vertex->left->right, text_section, var);
 
@@ -110,16 +210,16 @@ void fill_text_sec (bin_tree *tree, BYTE *text_section, variables *var)
     }
 }
 
-void find_glob_vars (bin_tree_elem *element, int n_glob_vars)
+void find_glob_vars (bin_tree_elem *element, variables *var)
 {
     if (element->left != nullptr)
-        find_glob_vars(element->left, n_glob_vars);
+        find_glob_vars(element->left, var);
 
-    if (element->type == VAR && element->value < n_glob_vars)
+    if (element->type == VAR && var->is_global[(int) element->value])
         element->type = GLOB_VAR;
 
     if (element->right != nullptr)
-        find_glob_vars(element->right, n_glob_vars);
+        find_glob_vars(element->right, var);
 }
 
 void main_var_optimize (bin_tree_elem *element, int n_glob_vars)
@@ -147,17 +247,39 @@ void encode_command (bin_tree_elem *element, BYTE *text_section, variables *var)
 {
     if (element->type == COMMAND && (int) element->value == ASSIGN)
     {
-        encode_expr(element->right, text_section, var);
+        if (element->left->type == ARRAY_IDX)
+        {
+            encode_expr(element->right, text_section, var);
+            PUT_BYTE(PUSH_EBX)
 
-        if (element->left->type == VAR)
-        {
-            PUT_WORD(MOV_EDI_MEM_EBX)
-            PUT_BYTE((int) element->left->value * sizeof(int))
+            encode_expr(element->left->left, text_section, var);
+            PUT_BYTE(0xC1);
+            PUT_BYTE(0xE3);
+            PUT_BYTE(0x02);
+
+            PUT_BYTE(0x8D);
+            PUT_BYTE(0x8C);
+            PUT_BYTE(0x1E);
+            PUT_DWORD((DWORD)(var->word_off[(int) element->left->value] * (int) sizeof(int)));
+
+            PUT_BYTE(POP_EBX)
+            PUT_BYTE(0x89);
+            PUT_BYTE(0x19);
         }
-        else if (element->left->type == GLOB_VAR)
+        else
         {
-            PUT_WORD(MOV_ESI_MEM_EBX)
-            PUT_BYTE((int)element->left->value * sizeof(int))
+            encode_expr(element->right, text_section, var);
+
+            if (element->left->type == VAR)
+            {
+                PUT_WORD(MOV_EDI_MEM_EBX)
+                PUT_BYTE((int) element->left->value * sizeof(int))
+            }
+            else if (element->left->type == GLOB_VAR)
+            {
+                PUT_WORD(MOV_ESI_MEM_EBX)
+                PUT_BYTE(var->word_off[(int) element->left->value] * (int) sizeof(int))
+            }
         }
     }
     else if (element->type == COMMAND && (int) element->value == IF)
@@ -245,8 +367,16 @@ void encode_command (bin_tree_elem *element, BYTE *text_section, variables *var)
         {
             call_get_number(text_section);
 
-            PUT_WORD(MOV_EDI_MEM_EAX)
-            PUT_BYTE((int) element->left->value * sizeof(int))
+            if (element->left->type == GLOB_VAR)
+            {
+                PUT_WORD(MOV_ESI_MEM_EAX)
+                PUT_BYTE(var->word_off[(int) element->left->value] * (int) sizeof(int))
+            }
+            else
+            {
+                PUT_WORD(MOV_EDI_MEM_EAX)
+                PUT_BYTE((int) element->left->value * sizeof(int))
+            }
         }
         else if ((int) element->value == PRINT)
         {
@@ -255,6 +385,10 @@ void encode_command (bin_tree_elem *element, BYTE *text_section, variables *var)
 
             call_print_number(text_section);
         }
+    }
+    else if (element->type == FUNC && is_sock_builtin((int) element->value))
+    {
+        encode_sock_dispatch(element, text_section, var, 0);
     }
     else if (element->type == USER_FUNC)
     {
@@ -308,13 +442,27 @@ void encode_expr (bin_tree_elem *element, BYTE *text_section, variables *var)
     else if (element->type == GLOB_VAR)
     {
         PUT_WORD(MOV_EBX_ESI_MEM)
-        PUT_BYTE((int)element->value * sizeof(int))
+        PUT_BYTE(var->word_off[(int) element->value] * (int) sizeof(int))
     }
     else if (element->type == VAR)
     {
         // mov ebx, [edi + element->value]
         PUT_WORD(MOV_EBX_EDI_MEM)
         PUT_BYTE((int) element->value * sizeof(int))
+    }
+    else if (element->type == ARRAY_IDX)
+    {
+        /* ebx = index (slot offset); addressing scales by 4 — no shl ebx,2 here */
+        encode_expr(element->left, text_section, var);
+
+        PUT_BYTE(0x8B);
+        PUT_BYTE(0x9C);
+        PUT_BYTE(0x9E);
+        PUT_DWORD((DWORD)(var->word_off[(int) element->value] * (int) sizeof(int)))
+    }
+    else if (element->type == FUNC && is_sock_builtin((int) element->value))
+    {
+        encode_sock_dispatch(element, text_section, var, 1);
     }
     else if (element->type == USER_FUNC)
     {
@@ -388,6 +536,70 @@ void encode_expr (bin_tree_elem *element, BYTE *text_section, variables *var)
 
         PUT_WORD(XOR_EDX_EDX)
         PUT_WORD(DIV_EBX)
+        PUT_WORD(MOV_EBX_EAX)
+    }
+}
+
+static void encode_sock_push_args_rev (bin_tree_elem *param_chain, BYTE *text_section, variables *var)
+{
+    bin_tree_elem *args[MAX_FUNC_PARAM];
+    int na = 0;
+
+    for (bin_tree_elem *p = param_chain; p != nullptr && na < MAX_FUNC_PARAM; p = p->left)
+        args[na++] = p->right;
+
+    for (int i = na - 1; i >= 0; --i)
+    {
+        encode_expr(args[i], text_section, var);
+        PUT_BYTE(PUSH_EBX)
+    }
+}
+
+static void encode_sock_dispatch (bin_tree_elem *element, BYTE *text_section, variables *var, int want_result_ebx)
+{
+    DWORD imp        = 0;
+    int stack_clean = 0;
+    const int v      = (int) element->value;
+
+    switch (v)
+    {
+        case SOCK_INIT:
+            imp         = SOCK_INIT_ADDR;
+            stack_clean = 0;
+            break;
+        case SOCK_TCP_CONNECT:
+            imp         = SOCK_TCP_CONNECT_ADDR;
+            stack_clean = 5 * (int)sizeof(DWORD);
+            break;
+        case SOCK_CLOSE:
+            imp         = SOCK_CLOSE_ADDR;
+            stack_clean = 1 * (int)sizeof(DWORD);
+            break;
+        case SOCK_SEND_INT:
+            imp         = SOCK_SEND_INT_ADDR;
+            stack_clean = 2 * (int)sizeof(DWORD);
+            break;
+        case SOCK_RECV_INT:
+            imp         = SOCK_RECV_INT_ADDR;
+            stack_clean = 1 * (int)sizeof(DWORD);
+            break;
+        default:
+            return;
+    }
+
+    encode_sock_push_args_rev(element->left, text_section, var);
+
+    PUT_WORD(CALL_DWORD_PTR_DS)
+    PUT_DWORD(imp)
+
+    if (stack_clean > 0)
+    {
+        PUT_WORD(ADD_ESP)
+        PUT_DWORD((DWORD)stack_clean)
+    }
+
+    if (want_result_ebx && v != SOCK_CLOSE)
+    {
         PUT_WORD(MOV_EBX_EAX)
     }
 }
@@ -505,4 +717,7 @@ void call_print_number (BYTE *text_section)
 {
     PUT_WORD(CALL_DWORD_PTR_DS)
     PUT_DWORD(PRINT_NUMBER_ADDR)
+
+    PUT_WORD(ADD_ESP)
+    PUT_DWORD(4)
 }

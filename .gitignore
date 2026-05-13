@@ -3,3 +3,23 @@ build/
 html/
 latex/
 Doxyfile
+
+# Accidental in-source CMake/Ninja (prefer configuring under build/)
+/CMakeCache.txt
+/CMakeFiles/
+/build.ninja
+/cmake_install.cmake
+/.ninja_deps
+/.ninja_log
+
+# Toolchain outputs dropped in repo root
+/*.exe
+/libtree.a
+/sfasmlib.dll
+/ast.tree
+/optimized.tree
+/output.exe
+
+/libtext/CMakeFiles/
+/libtext/cmake_install.cmake
+/libtext/libtext.a

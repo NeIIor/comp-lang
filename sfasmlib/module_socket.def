@@ -1,0 +1,16 @@
+; Same as module.def plus Winsock-related exports for sfasmlib_runtime.dll
+; or a MASM DLL that implements sockets. Use when compiling programs that call $sock_*.
+
+LIBRARY sfasmlib.dll
+
+DESCRIPTION 'sfasmlib with socket exports (optional).'
+
+EXPORTS
+PrintNumber
+GetNumber
+ExitProgram
+SockInit
+SockTcpConnect
+SockClose
+SockSendInt
+SockRecvInt

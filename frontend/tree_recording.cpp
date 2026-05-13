@@ -59,6 +59,11 @@ void write_in_tree_file (bin_tree_elem *element, FILE *lang_tree, variables *var
         fprintf(lang_tree, " = {");
         PRE_ORDER_REC
     }
+    else if (element->type == COMMAND && (int) element->value == DIM)
+    {
+        fprintf(lang_tree, " dim {");
+        PRE_ORDER_REC
+    }
     else if (element->type == RETURN)
     {
         fprintf(lang_tree, " return {");
@@ -83,6 +88,12 @@ void write_in_tree_file (bin_tree_elem *element, FILE *lang_tree, variables *var
     {
         fprintf(lang_tree, " %s {", func_name(element->value));
         PRE_ORDER_REC
+    }
+    else if (element->type == ARRAY_IDX)
+    {
+        fprintf(lang_tree, " $subs { %s { nil }{ nil }}{", var->var[(int) element->value]);
+        write_in_tree_file(element->left, lang_tree, var);
+        fprintf(lang_tree, "}");
     }
     else if (element->type == VAR || element->type == GLOB_VAR)
     {
@@ -132,6 +143,16 @@ const char *func_name (int value)
             return "$deriv";
         case POWER:
             return "$power";
+        case SOCK_INIT:
+            return "$sock_init";
+        case SOCK_TCP_CONNECT:
+            return "$sock_tcp_connect";
+        case SOCK_CLOSE:
+            return "$sock_close";
+        case SOCK_SEND_INT:
+            return "$sock_send_int";
+        case SOCK_RECV_INT:
+            return "$sock_recv_int";
         default:
             return NULL;
     }

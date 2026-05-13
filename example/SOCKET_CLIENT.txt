@@ -1,0 +1,28 @@
+DLL: `cmake --build .` builds `build/sfasmlib.dll` via `sfasmlib/build_runtime.bat`.
+CMake caches **`CMM_SFASM_GCC`** (mingw32 `gcc.exe`, i686) in `build/CMakeCache.txt` — auto-filled if found under `C:/msys64/mingw32` etc.; override once with `cmake .. -DCMM_SFASM_GCC=C:/path/to/mingw32/bin/gcc.exe`.
+Skip DLL step: `cmake .. -DCMM_BUILD_SFASM_RUNTIME=OFF`.
+
+Socket demo (example/socket_client.cmm)
+
+Build (from compiler/build):
+
+  cmm_frontend.exe ../example/socket_client.cmm sock_ast.tree
+  lang_optimizer.exe sock_ast.tree sock_opt.tree
+  lang_compile.exe sock_opt.tree socket_client.exe
+
+lang_compile prints a stderr reminder when the program uses Winsock imports.
+
+Smoke test:
+
+  Terminal 1:  python example/socket_echo_server.py
+  Terminal 2:  socket_client.exe
+
+Expected client output: 42
+
+If the client exits instantly with no output, check:
+  echo $LASTEXITCODE   (e.g. -1073741511 = missing DLL export — wrong sfasmlib.dll)
+
+CMake "generator does not match": delete build\CMakeCache.txt and build\CMakeFiles, then
+configure again with ONE generator only (Ninja or MinGW Makefiles).
+
+Note: CMM lexer does not strip /* */ comments in .cmm files; keep socket_client.cmm comment-free.

@@ -45,6 +45,11 @@ enum functions
     PRINT  = 16,
     SCAN   = 17,
     POWER  = 18,
+    SOCK_INIT        = 19,
+    SOCK_TCP_CONNECT = 20,
+    SOCK_CLOSE       = 21,
+    SOCK_SEND_INT    = 22,
+    SOCK_RECV_INT    = 23,
 };
 
 enum type
@@ -64,6 +69,8 @@ enum type
     ENUM        = 13,
     RETURN      = 14,
     GLOB_VAR    = 15,
+    SQ_BRACKET  = 16,
+    ARRAY_IDX   = 17,
 };
 
 enum command
@@ -71,6 +78,7 @@ enum command
     IF     = 1,
     WHILE  = 2,
     ASSIGN = 3,
+    DIM    = 4,
 };
 
 enum condition
@@ -85,8 +93,10 @@ enum condition
 
 enum brackets
 {
-    OPEN  = 1000,
-    CLOSE = 1001,
+    OPEN     = 1000,
+    CLOSE    = 1001,
+    SQ_OPEN  = 1010,
+    SQ_CLOSE = 1011,
 };
 
 enum error_state
