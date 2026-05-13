@@ -28,7 +28,7 @@
 - Генерация внутреннего кода  
 - Основные функции стандартной библиотеки  
 
-Для простоты компилятор работает исключительно с 32-разрядными целыми значениями**.  
+Для простоты компилятор работает исключительно с 32-разрядными целыми значениями.
 
 Если вы хотите ознакомиться с внутренней структурой исполняемых файлов PE Windows, вы можете воспользоваться русскоязычной [статьей](https://habr.com/ru/articles/266831/) или англоязычной [статьей](https://0xrick.github.io/win-internals/pe2/), разделенной на 6 частей.
 
@@ -79,6 +79,7 @@ main
 - `scan()` / `scan(x)` — считывает целое число (в рантайме Windows — через консольный ввод, см. раздел «Запуск output.exe» ниже)  
 - `print(expr)` — выводит целое число  
 - Математические функции: `sin`, `cos`, `pow` и т.д.  
+- **Сокеты** (в таблицу импорта PE попадают символы Winsock только если программа их использует): `sock_init()`, `sock_tcp_connect(o1, o2, o3, o4, port)`, `sock_close(s)`, `sock_send_int(s, val)`, `sock_recv_int(s)` — см. раскрывающийся пример в разделе «Пример использования» и файл `example/SOCKET_CLIENT.txt`.
 
 <details>  
 <summary> Пример функции</summary>  
@@ -103,10 +104,13 @@ main
 ## Инструкции по сборке  
 ### Предварительные требования  
 - **ОС**: сборка и запуск инструментов — **Windows** (бэкенд использует `windows.h`).  
-- **CMake** (≥ 3.8)  
-- **MinGW-w64** с `gcc` / `g++` в `PATH` (удобно: [MSYS2](https://www.msys2.org/) UCRT64 или аналог)  
-
-Пересборка `sfasmlib.dll` из исходников в репозитории не входит в CMake; для работы достаточно уже лежащей в `sfasmlib/sfasmlib.dll`, которую CMake копирует в каталог `build`.
+- **CMake** (≥ 3.10)  
+- **MinGW-w64** с `gcc` / `g++` в `PATH` для сборки самих утилит компилятора (удобно: [MSYS2](https://www.msys2.org/) **UCRT64** или аналог).  
+- **`sfasmlib.dll`**: по умолчанию CMake собирает её из `sfasmlib/sfasmlib_runtime.c` целью **`cmm_sfasm_runtime`** и кладёт в каталог `build`. Нужен **32-битный** GCC из профиля **MINGW32** MSYS2 (`pacman -S mingw-w64-i686-gcc` в среде MSYS2). Путь к `gcc.exe` сохраняется в **`build/CMakeCache.txt`** как **`CMM_SFASM_GCC`** (часто автоматически `C:/msys64/mingw32/bin/gcc.exe`). Задать вручную:  
+  `cmake .. -DCMM_SFASM_GCC=C:/msys64/mingw32/bin/gcc.exe`  
+  Отключить шаг DLL:  
+  `cmake .. -DCMM_BUILD_SFASM_RUNTIME=OFF`  
+  Тогда положите в `build` совместимую **`sfasmlib.dll`** сами (например собранную из `sfasmlib/build_runtime.bat` или из ассемблера в `sfasmlib/` — см. `example/SOCKET_CLIENT.txt`).
 
 ### Этапы построения  
 
@@ -173,6 +177,39 @@ cmm_frontend.exe ..\example\program.cmm ast.tree && lang_optimizer.exe ast.tree 
 Результат компиляции — файл **`output.exe`** в текущем каталоге.  
 
 <details>  
+<summary>Пример: TCP-клиент к localhost (сокеты)</summary>  
+
+Нужна **`sfasmlib.dll`** с экспортами Winsock (обычно уже есть в `build` после `cmake --build`). Для проверки удобен Python.
+
+**Сборка** (текущий каталог — `build`):  
+
+```powershell
+.\cmm_frontend.exe ..\example\socket_client.cmm sock_ast.tree
+.\lang_optimizer.exe sock_ast.tree sock_opt.tree
+.\lang_compile.exe sock_opt.tree socket_client.exe
+```
+
+При использовании сокетов `lang_compile` выводит в stderr напоминание про совместимость DLL.
+
+**Запуск** — два терминала. В первом (из корня репозитория):
+
+```powershell
+python example\socket_echo_server.py
+```
+
+Во втором (`build`):
+
+```powershell
+.\socket_client.exe
+```
+
+Ожидаемый вывод клиента: **`42`**. Типичные ошибки и переменные CMake — в **`example/SOCKET_CLIENT.txt`**.
+
+*Замечание:* лексер **не** обрабатывает комментарии `/* ... */` в `.cmm`; пример `socket_client.cmm` без них.
+
+</details>
+
+<details>  
 <summary>Базовый пример</summary>  
 
 **Ввод (program.cmm):**  
@@ -215,7 +252,7 @@ factorial(x)
 
 **Оптимизированное AST:**  
 ```  
-{ function-declaration { $main { nil }{ concatenation { $scan { x { nil }{ nil }}{ nil }}{ concatenation { = { x { nil }{ nil }}{ $factorial { concatenation { nil }{ x { nil }{ nil }}}{ nil }}}{ concatenation { = { i { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { = { j { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { while { < { i { nil }{ nil }}{ 10 { nil }{ nil }}}{ concatenation { = { j { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { while { < { j { nil }{ nil }}{ 10 { nil }{ nil }}}{ concatenation { $print { + { * { 10 { nil }{ nil }}{ i { nil }{ nil }}}{ j { nil }{ nil }}}{ nil }}{ concatenation { = { j { nil }{ nil }}{ + { j { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}}{ concatenation { = { i { nil }{ nil }}{ + { i { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}}}{ concatenation { $print { x { nil }{ nil }}{ nil }}{ nil }}}}}}}}{ function-declaration { $factorial { x { nil }{ nil }}{ concatenation { if { <= { x { nil }{ nil }}{ 1 { nil }{ nil }}}{ concatenation { return { 1 { nil }{ nil }}{ nil }}{ nil }}}{ concatenation { return { * { x { nil }{ nil }}{ $factorial { concatenation { nil }{ - { x { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}{ nil }}{ nil }}}}{ nil }}}  (добавить картинку)
+{ function-declaration { $main { nil }{ concatenation { $scan { x { nil }{ nil }}{ nil }}{ concatenation { = { x { nil }{ nil }}{ $factorial { concatenation { nil }{ x { nil }{ nil }}}{ nil }}}{ concatenation { = { i { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { = { j { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { while { < { i { nil }{ nil }}{ 10 { nil }{ nil }}}{ concatenation { = { j { nil }{ nil }}{ 0 { nil }{ nil }}}{ concatenation { while { < { j { nil }{ nil }}{ 10 { nil }{ nil }}}{ concatenation { $print { + { * { 10 { nil }{ nil }}{ i { nil }{ nil }}}{ j { nil }{ nil }}}{ nil }}{ concatenation { = { j { nil }{ nil }}{ + { j { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}}{ concatenation { = { i { nil }{ nil }}{ + { i { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}}}{ concatenation { $print { x { nil }{ nil }}{ nil }}{ nil }}}}}}}}{ function-declaration { $factorial { x { nil }{ nil }}{ concatenation { if { <= { x { nil }{ nil }}{ 1 { nil }{ nil }}}{ concatenation { return { 1 { nil }{ nil }}{ nil }}{ nil }}}{ concatenation { return { * { x { nil }{ nil }}{ $factorial { concatenation { nil }{ - { x { nil }{ nil }}{ 1 { nil }{ nil }}}}{ nil }}}{ nil }}{ nil }}}}{ nil }}}
 ```  
 </details>  
 
@@ -252,7 +289,7 @@ doxygen Doxyfile
    - Жестко заданные адреса функций (например, `print_number`)  
 
 3. **Таблица импорта**:  
-   - Импорт из `sfasmlib.dll`  
+   - Импорт из `sfasmlib.dll`; если в программе есть встроенные вызовы сокетов, линкер добавляет расширенный набор символов Winsock, иначе достаточно минимального набора функций консоли.
 
 Пример фрагмента дизассемблирования:  
 ```asm  
@@ -287,7 +324,7 @@ call 0x401000    ; Вызов функции печати
 <a name="english-version"></a>
 ## English Version
 
-The CMM toolchain targets **32-bit Windows PE** executables. Build the compiler on **Windows** with MinGW; the backend relies on `windows.h`. By default the **compiler tools** are 64-bit; the generated **`output.exe`** is still a 32-bit PE. Use `cmake .. -DCMM_32BIT_HOST=ON` only if you need the tools themselves built as 32-bit (`-m32`) and your GCC has i686/multilib.
+The CMM toolchain targets **32-bit Windows PE** executables. Build the compiler on **Windows** with MinGW; the backend relies on `windows.h`. By default the **compiler tools** are 64-bit; the generated **`output.exe`** is still a 32-bit PE. Use `cmake .. -DCMM_32BIT_HOST=ON` only if you need the tools themselves built as 32-bit (`-m32`) and your GCC has i686/multilib. CMake also builds **`sfasmlib.dll`** into **`build`** from `sfasmlib_runtime.c` unless `CMM_BUILD_SFASM_RUNTIME=OFF` (see [Build Instructions](#build-instructions)).
 
 ## Table of Contents  
 1. [Overview](#overview)  
@@ -361,6 +398,7 @@ Built-in functions:
 - `scan()` / `scan(x)` — reads an integer (Windows runtime uses the console; see [Running output.exe](#usage-examples))  
 - `print(expr)` — prints an integer  
 - Math functions: `sin`, `cos`, `pow`, etc.  
+- **Sockets** (Winsock PE imports are emitted only when used): `sock_init()`, `sock_tcp_connect(o1, o2, o3, o4, port)`, `sock_close(s)`, `sock_send_int(s, val)`, `sock_recv_int(s)` — see the collapsible example under [Usage Examples](#usage-examples) and `example/SOCKET_CLIENT.txt`.
 
 <details>  
 <summary>Function Example</summary>  
@@ -385,10 +423,13 @@ main
 ## Build Instructions  
 ### Prerequisites  
 - **Host OS**: **Windows** for building and running the toolchain (backend uses `windows.h`).  
-- **CMake** (≥ 3.8)  
-- **MinGW-w64** with `gcc`/`g++` on `PATH` (e.g. [MSYS2](https://www.msys2.org/) UCRT64)  
-
-Rebuilding `sfasmlib.dll` from the bundled assembly is **not** part of CMake; the prebuilt DLL in `sfasmlib/` is copied into `build` automatically.
+- **CMake** (≥ 3.10)  
+- **MinGW-w64** with `gcc`/`g++` on `PATH` for building the compiler tools (e.g. [MSYS2](https://www.msys2.org/) **UCRT64**).  
+- **`sfasmlib.dll`**: by default CMake builds it from `sfasmlib/sfasmlib_runtime.c` via the **`cmm_sfasm_runtime`** step into `build`. That requires the **32-bit** GCC from MSYS2 **MINGW32** (`pacman -S mingw-w64-i686-gcc` from an MSYS2 shell). The compiler path is cached as **`CMM_SFASM_GCC`** in `build/CMakeCache.txt` (often auto-filled as `C:/msys64/mingw32/bin/gcc.exe`). Override manually:  
+  `cmake .. -DCMM_SFASM_GCC=C:/msys64/mingw32/bin/gcc.exe`  
+  Skip the DLL step:  
+  `cmake .. -DCMM_BUILD_SFASM_RUNTIME=OFF`  
+  and supply a compatible **`sfasmlib.dll`** yourself (e.g. run `sfasmlib/build_runtime.bat`, or use the MASM build under `sfasmlib/` — see `example/SOCKET_CLIENT.txt`).
 
 ### Build Steps  
 ```bash  
@@ -452,6 +493,40 @@ Only **`output.exe`** is meant to be run as an application; the others are pipel
 - I/O for `scan` / `print` is implemented in **`sfasmlib`** with **`ReadConsole`** / **`WriteConsole`**, not classic redirected stdin/stdout. Prefer **typing input in an interactive console**. Pipes such as `echo 5 | output.exe` or file redirection may not behave like a normal C program.  
 
 The compiler output is **`output.exe`** in the current directory.
+
+
+<details>  
+<summary>Example: localhost TCP client (sockets)</summary>  
+
+You need **`sfasmlib.dll`** with Winsock exports (normally produced in `build` by `cmake --build`). Python is handy for the echo server.
+
+**Build** (current directory is `build`):  
+
+```powershell
+.\cmm_frontend.exe ..\example\socket_client.cmm sock_ast.tree
+.\lang_optimizer.exe sock_ast.tree sock_opt.tree
+.\lang_compile.exe sock_opt.tree socket_client.exe
+```
+
+When sockets are used, `lang_compile` prints a stderr reminder about DLL compatibility.
+
+**Run** — two terminals. In the first (repository root):
+
+```powershell
+python example\socket_echo_server.py
+```
+
+In the second (`build`):
+
+```powershell
+.\socket_client.exe
+```
+
+Expected client output: **`42`**. Common pitfalls — **`example/SOCKET_CLIENT.txt`**.
+
+*Note:* the lexer does **not** strip `/* ... */` comments in `.cmm`; `socket_client.cmm` avoids them on purpose.
+
+</details>
 
 
 <details>  
@@ -534,7 +609,7 @@ The compiler generates **32-bit PE executables** with:
    - Hardcoded function addresses (e.g., `print_number`)  
 
 3. **Import Table**:  
-   - Imports from `sfasmlib.dll`  
+   - Imports from `sfasmlib.dll`; programs that use socket builtins get an extended Winsock import set; otherwise only the small console import set is linked.
 
 Example disassembly snippet:  
 ```asm  
